@@ -2,6 +2,7 @@ import dayjs from "dayjs";
 import { createCookieSessionStorage, Session } from "remix";
 import { StravaAPI } from "../http/StravaAPI";
 import { Logger } from "../Logger";
+import { getSessionToken } from "../session";
 
 let sessionSecret = process.env.STRAVA_CLIENT_SECRET;
 if (!sessionSecret) {
@@ -42,16 +43,6 @@ const StravaApi = new StravaAPI({
   logger: StravaLogger,
 });
 
-export async function getStravaAccessToken(request: Request) {
-  let session = await storage.getSession(request.headers.get("Cookie"));
-  let strava = session.get(STRAVA_KEY);
-  if (!strava || typeof strava !== "string") {
-    StravaLogger.log("session not found");
-    return null;
-  }
-  return strava;
-}
-
 const createStravaSession = async () => {
   const response = await StravaApi.createStravaAccessToken<{
     access_token: string;
@@ -69,8 +60,14 @@ const createStravaSession = async () => {
 };
 
 export const getStravaAthleteData = async (request: Request) => {
-  let token: string | null = await getStravaAccessToken(request);
+  let token: string | null = await getSessionToken(
+    request,
+    storage,
+    StravaLogger,
+    STRAVA_KEY
+  );
   let session: Session | null = null;
+  let cookie: string | null = null;
 
   if (!token) {
     StravaLogger.log("no initial token");
@@ -79,28 +76,15 @@ export const getStravaAthleteData = async (request: Request) => {
 
   if (session) {
     token = session.get(STRAVA_KEY);
+    cookie = await storage.commitSession(session);
   }
 
   const athleteDataResponse = await StravaApi.getAthleteData<{
     ytd_run_totals: StravaYearToDateTotals;
   }>(token as string);
 
-  if (athleteDataResponse) {
-    const { ytd_run_totals } = athleteDataResponse;
-
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-
-    if (session) {
-      headers["Set-Cookie"] = await storage.commitSession(session);
-    }
-
-    return new Response(JSON.stringify({ data: ytd_run_totals }), {
-      headers,
-    });
-  }
-
-  StravaLogger.log("no athlete data response");
-  return null;
+  return {
+    body: athleteDataResponse ? athleteDataResponse.ytd_run_totals : null,
+    cookie,
+  };
 };

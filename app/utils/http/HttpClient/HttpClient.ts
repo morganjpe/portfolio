@@ -1,6 +1,6 @@
 import { Logger } from "../../Logger";
 
-export type HttpOptions = Record<string, string>;
+export type HttpOptions = Record<string, any>;
 
 export interface HttpClientOptions {
   baseUrl: string;
@@ -54,15 +54,12 @@ export class HttpClient {
 
   post<T>(
     endpoint: string,
-    body: HttpOptions,
+    body: string | URLSearchParams,
     options?: { [key: string]: HttpOptions }
   ) {
-    console.log(body);
-    console.log({ ...options });
-
     return this.fetchJson<T>(endpoint, {
       ...options,
-      body: JSON.stringify(body),
+      body,
       method: "POST",
     });
   }
